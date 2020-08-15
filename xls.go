@@ -16,54 +16,64 @@ const (
 	xlsTag                = "xls"
 	inlineKey             = "inline"
 	precisionKey          = "precision"
-	defaultFloatPrecision = 6
+	defaultFloatPrecision = -1
 )
 
 // dump data to file
 // data: ptr of slice, slice element should be a struct
 // sep: separator of csv line. be careful to avoid value conflict
 func XlsDump(file *xlsx.File, sheetName string, data interface{}) error {
-	value := reflect.ValueOf(data)
-	if value.Kind() != reflect.Slice {
+	dataValue := reflect.ValueOf(data)
+	if dataValue.Kind() != reflect.Slice {
 		return errors.New("do not support non slice data")
 	}
-	l := value.Len()
-	if l == 0 {
+	sliceLen := dataValue.Len()
+	if sliceLen == 0 {
 		return errors.New("empty slice")
 	}
-	dataSlice := make([]interface{}, l)
-	for i := 0; i < l; i++ {
-		if value.Index(i).CanInterface() {
 
-			if value.Index(i).IsNil() {
-				return errors.New("slice contain nil element")
-			}
-
-			//if value.Index(i).CanAddr() {
-			//	return errors.New("slice contains element that can't addr")
-			//}
-			dataSlice[i] = value.Index(i).Interface()
-		} else {
-			return errors.New("slice item CanInterface failed")
-		}
-
-	}
 	sheet, err := file.AddSheet(sheetName)
 	if err != nil {
 		return err
 
 	}
 	var optionMap map[string]*xlsOption
-	for k, v := range dataSlice {
-		if k == 0 {
+	for i := 0; i < sliceLen; i++ {
+
+		itemValue := dataValue.Index(i)
+		if itemValue.Kind() == reflect.Ptr {
+			itemValue = itemValue.Elem()
+		}
+		if i == 0 {
 			row := sheet.AddRow()
-			optionMap, err = addHeaderRow(row, v)
+			optionMap, err = addHeaderRow(itemValue, func(str string, kind reflect.Kind) {
+				cell := row.AddCell()
+				log.Debug("tag1 str:%v kind:%v", str, kind.String())
+				cell.Value = str
+				cell.SetType(xlsx.CellTypeString)
+			})
 			if err != nil {
 				return err
 			}
 		}
 		row := sheet.AddRow()
-		err = addRow(row, v, optionMap)
+		err = addRow(itemValue, optionMap, func(str string, kind reflect.Kind) {
+			log.Debug("tag2")
+			cell := row.AddCell()
+			cell.Value = str
+			switch kind {
+			case reflect.Interface, reflect.Map, reflect.Array, reflect.Slice, reflect.Complex64,
+				reflect.Complex128, reflect.UnsafePointer, reflect.Chan, reflect.Func,
+				reflect.String:
+				cell.SetType(xlsx.CellTypeString)
+
+			case reflect.Int8, reflect.Uint8, reflect.Int16, reflect.Uint16, reflect.Int32, reflect.Uint32,
+				reflect.Int64, reflect.Uint64, reflect.Int, reflect.Uint, reflect.Float64, reflect.Float32:
+				cell := row.AddCell()
+				cell.SetType(xlsx.CellTypeNumeric)
+
+			}
+		})
 		if err != nil {
 			return err
 		}
@@ -77,79 +87,24 @@ type xlsOption struct {
 	Precision int
 }
 
-
-
-
-type LineAppender interface {
-	AddLine
-}
-
 // add header
-func addHeaderRow(row *xlsx.Row, v interface{}) (optionMap map[string]*xlsOption, err error) {
-	if row == nil {
-		return optionMap, errors.New("row empty")
-	}
-	dataValue := reflect.ValueOf(v)
-	dataType := reflect.TypeOf(v)
-	if dataType == nil {
-		return optionMap, fmt.Errorf("RowHeadAddStruct get nil input")
-	}
-
-	if dataType.Kind() == reflect.Ptr {
-		dataValue = dataValue.Elem()
-		dataType = dataType.Elem()
-	}
-
-	if dataType.Kind() != reflect.Struct {
-		err = errors.New("only support struct or struct pointer")
-		return
-	}
-
-	optionMap = make(map[string]*xlsOption)
-
-	num := dataType.NumField()
-	for i := 0; i < num; i++ {
-		tag := dataType.Field(i).Tag.Get(xlsTag)
-		if len(tag) == 0 {
-			continue
+func addHeaderRow(dataValue reflect.Value, f rowHandleFunc) (optionMap map[string]*xlsOption, err error) {
+	optionMap = getStructOptions(dataValue)
+	log.Debug("addHeaderRow", utils.GetJsonIdent(optionMap))
+	// 这里会有乱序，需要修改getStructOptions 函数
+	for _, v := range optionMap {
+		if len(v.XlsName) > 0 {
+			f(v.XlsName, reflect.String)
 		}
 
-		// get option
-		option := getOptionFromTag(tag)
-
-		field := dataType.Field(i)
-		fieldName := field.Name
-
-		if option != nil {
-			optionMap[fieldName] = option
-		}
-
-		fieldValue := dataValue.FieldByName(fieldName)
-		if !fieldValue.IsValid() {
-			continue
-		}
-
-		if field.Type.Kind() == reflect.Struct && option.IsInline {
-			newOptionMap, err := addHeaderRow(row, fieldValue.Interface())
-			if err != nil {
-				return nil, err
-			}
-			for k, v := range newOptionMap {
-				optionMap[k] = v
-			}
-		} else {
-			cell := row.AddCell()
-			cell.Value = strings.Split(tag, ",")[0]
-			cell.SetType(xlsx.CellTypeString)
-		}
 	}
+
 	return optionMap, nil
 }
 
-func addRow(row *xlsx.Row, v interface{}, optionMap map[string]*xlsOption) (err error) {
-	if row == nil {
-		return errors.New("row empty")
-	}
+type rowHandleFunc func(str string, kind reflect.Kind)
+
+func addRow(v interface{}, optionMap map[string]*xlsOption, f rowHandleFunc) (err error) {
 	dataType := reflect.TypeOf(v)
 	dataValue := reflect.ValueOf(v)
 
@@ -184,10 +139,20 @@ func addRow(row *xlsx.Row, v interface{}, optionMap map[string]*xlsOption) (err 
 		}
 
 		switch field.Type.Kind() {
-		case reflect.Ptr, reflect.Struct:
+		case reflect.Ptr:
+			if fieldValue.Elem().Kind() == reflect.Struct {
+				if option.IsInline {
+					err = addRow(fieldValue.Elem(), optionMap, f)
+					if err != nil {
+						return err
+					}
+				}
+			}
+
+		case reflect.Struct:
 			if fieldValue.CanInterface() {
-				if option != nil && option.IsInline {
-					err = addRow(row, fieldValue.Interface(), optionMap)
+				if option.IsInline {
+					err = addRow(fieldValue, optionMap, f)
 					if err != nil {
 						panic(err)
 					}
@@ -195,40 +160,29 @@ func addRow(row *xlsx.Row, v interface{}, optionMap map[string]*xlsOption) (err 
 			}
 
 		case reflect.Interface, reflect.Map, reflect.Array, reflect.Slice, reflect.Complex64, reflect.Complex128, reflect.UnsafePointer, reflect.Chan, reflect.Func:
-			cell := row.AddCell()
-			cell.Value = "# unsupported by xlsx-util #"
+			f("# unsupported by xlsx-util #", field.Type.Kind())
 
 		case reflect.Float64, reflect.Float32:
-			cell := row.AddCell()
-			cell.SetType(xlsx.CellTypeNumeric)
 			precision := defaultFloatPrecision
 			if option != nil && option.Precision > 0 {
 				precision = option.Precision
 			}
-
+			fieldStr := ""
 			if fieldValue.CanInterface() {
 				if field.Type.Kind() == reflect.Float32 {
-					cell.Value = strconv.FormatFloat(float64(fieldValue.Interface().(float32)), 'f', precision, 64)
+					fieldStr = strconv.FormatFloat(float64(fieldValue.Interface().(float32)), 'f', precision, 64)
 				} else {
-					cell.Value = strconv.FormatFloat(fieldValue.Interface().(float64), 'f', precision, 64)
+					fieldStr = strconv.FormatFloat(fieldValue.Interface().(float64), 'f', precision, 64)
 				}
 			}
 
+			f(fieldStr, field.Type.Kind())
+
 		case reflect.Int8, reflect.Uint8, reflect.Int16, reflect.Uint16, reflect.Int32, reflect.Uint32,
-			reflect.Int64, reflect.Uint64, reflect.Int, reflect.Uint:
-			cell := row.AddCell()
-			cell.SetType(xlsx.CellTypeNumeric)
+			reflect.Int64, reflect.Uint64, reflect.Int, reflect.Uint, reflect.String:
 			if fieldValue.CanInterface() {
-				cell.Value = fmt.Sprintf("%v", fieldValue.Interface())
-			}
-
-		case reflect.String:
-			cell := row.AddCell()
-
-			if fieldValue.CanInterface() {
-				cell.Value = fmt.Sprintf("%v", fieldValue.Interface())
-				cell.SetType(xlsx.CellTypeString)
-
+				fieldStr := fmt.Sprintf("%v", fieldValue.Interface())
+				f(fieldStr, field.Type.Kind())
 			}
 
 		}
@@ -345,8 +299,6 @@ func XlsLoad(file *xlsx.File, sheetName string, data interface{}) error {
 	dataValue := reflect.New(*dataType).Elem()
 	optionMap := getStructOptions(dataValue)
 
-	log.Debug("optionMap", utils.GetJsonIdent(optionMap))
-
 	// column index ->  column cell string
 	headerMap := make(map[int]string)
 
@@ -386,7 +338,6 @@ func XlsLoad(file *xlsx.File, sheetName string, data interface{}) error {
 			break
 		}
 
-		log.Debug("valueMap", valueMap)
 		addElement(*sliceValue, *dataType, isElementPtr, valueMap, optionMap)
 	}
 
@@ -430,7 +381,6 @@ func setStructValue(dataValue reflect.Value, valueMap map[string]string, optionM
 			continue
 		}
 
-		log.Debug("get tag  value ", fieldStr)
 		switch fieldValue.Kind() {
 		case reflect.Ptr:
 			if fieldValue.Elem().Kind() == reflect.Struct {
@@ -464,7 +414,6 @@ func setStructValue(dataValue reflect.Value, valueMap map[string]string, optionM
 			}
 			fieldValue.SetFloat(floatValue)
 
-		default:
 		}
 	}
 }
