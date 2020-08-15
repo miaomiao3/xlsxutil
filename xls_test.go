@@ -1,14 +1,15 @@
 package xlsxutil
 
 import (
+	"fmt"
 	"github.com/miaomiao3/xlsx"
 	. "github.com/smartystreets/goconvey/convey"
+	"mtest/utils"
 	"testing"
 )
 
-
 const (
-	xlsxFilePath = "example/xlsx/prople.xlsx"
+	xlsxFilePath  = "example/xlsx/people.xlsx"
 	xlsxFileSheet = "persons"
 )
 
@@ -29,7 +30,8 @@ func TestXlsxBindByYamlTag(t *testing.T) {
 		file, err := xlsx.OpenFile(xlsxFilePath)
 		So(err, ShouldEqual, nil)
 
-		err = XlsBindByYamlTag(file, xlsxFileSheet, &persons)
+		err = XlsLoad(file, xlsxFileSheet, &persons)
+		fmt.Println("persons:", utils.GetJson(persons))
 		So(err, ShouldEqual, nil)
 		So(len(persons), ShouldEqual, 5)
 		So(persons[4].Name, ShouldEqual, "n-4")

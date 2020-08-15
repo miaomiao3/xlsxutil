@@ -111,7 +111,7 @@ func getCsvHeaderOption(v interface{}) (optionMap map[string]*xlsOption, row []s
 			continue
 		}
 
-		if field.Type.Kind() == reflect.Struct && option.Inline {
+		if field.Type.Kind() == reflect.Struct && option.IsInline {
 			newOptionMap, embedRow, err := getCsvHeaderOption(fieldValue.Interface())
 			if err != nil {
 				return nil, nil, err
@@ -167,7 +167,7 @@ func getLineFromStruct(v interface{}, optionMap map[string]*xlsOption) ([]string
 		switch field.Type.Kind() {
 		case reflect.Ptr, reflect.Struct:
 			if fieldValue.CanInterface() {
-				if option != nil && option.Inline {
+				if option != nil && option.IsInline {
 					embedRow, err := getLineFromStruct(fieldValue.Interface(), optionMap)
 					if err != nil {
 						panic(err)

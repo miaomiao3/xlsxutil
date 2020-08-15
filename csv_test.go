@@ -7,15 +7,15 @@ import (
 )
 
 type Person struct {
-	Name  string  `xls:"name",yaml:"name"`
-	Money float64 `xls:"money,precision:10",yaml:"money"`
-	Age   int     `xls:"age",yaml:"age"`
+	Name  string  `xls:"name""`
+	Money float64 `xls:"money,precision:10"`
+	Age   int     `xls:"age"`
 	Edu   `xls:",inline"`
 }
 
 type Edu struct {
-	School  string `xls:"school",yaml:"school"`
-	Address string `xls:"address",yaml:"address"`
+	School  string `xls:"school"`
+	Address string `xls:"address"`
 }
 
 const (
@@ -28,7 +28,7 @@ n-4,1.2345678900,24,school-4,hali-4
 `
 )
 
-func prepareTestData()([]*Person){
+func prepareTestData() []*Person {
 	persons := make([]*Person, 0, 5)
 	for i := 0; i < 5; i++ {
 		newPerson := &Person{
@@ -42,7 +42,6 @@ func prepareTestData()([]*Person){
 	}
 	return persons
 }
-
 
 func TestCsvDump(t *testing.T) {
 	Convey("CsvDump", t, func() {

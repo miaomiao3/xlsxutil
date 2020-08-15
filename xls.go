@@ -1,20 +1,21 @@
 package xlsxutil
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
+	"github.com/miaomiao3/log"
 	"github.com/miaomiao3/xlsx" // i fork this repo to enable SetType
-	"gopkg.in/yaml.v2"
+	"gonum.org/v1/gonum/floats"
+	"mtest/utils"
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const (
 	xlsTag                = "xls"
-	inlineTag             = "inline"
+	inlineKey             = "inline"
+	precisionKey          = "precision"
 	defaultFloatPrecision = 6
 )
 
@@ -71,8 +72,16 @@ func XlsDump(file *xlsx.File, sheetName string, data interface{}) error {
 }
 
 type xlsOption struct {
-	Inline    bool `yaml:"inline"`
-	Precision int  `yaml:"precision"`
+	XlsName   string
+	IsInline  bool
+	Precision int
+}
+
+
+
+
+type LineAppender interface {
+	AddLine
 }
 
 // add header
@@ -120,7 +129,7 @@ func addHeaderRow(row *xlsx.Row, v interface{}) (optionMap map[string]*xlsOption
 			continue
 		}
 
-		if field.Type.Kind() == reflect.Struct && option.Inline {
+		if field.Type.Kind() == reflect.Struct && option.IsInline {
 			newOptionMap, err := addHeaderRow(row, fieldValue.Interface())
 			if err != nil {
 				return nil, err
@@ -136,7 +145,6 @@ func addHeaderRow(row *xlsx.Row, v interface{}) (optionMap map[string]*xlsOption
 	}
 	return optionMap, nil
 }
-
 
 func addRow(row *xlsx.Row, v interface{}, optionMap map[string]*xlsOption) (err error) {
 	if row == nil {
@@ -178,7 +186,7 @@ func addRow(row *xlsx.Row, v interface{}, optionMap map[string]*xlsOption) (err 
 		switch field.Type.Kind() {
 		case reflect.Ptr, reflect.Struct:
 			if fieldValue.CanInterface() {
-				if option != nil && option.Inline {
+				if option != nil && option.IsInline {
 					err = addRow(row, fieldValue.Interface(), optionMap)
 					if err != nil {
 						panic(err)
@@ -219,20 +227,7 @@ func addRow(row *xlsx.Row, v interface{}, optionMap map[string]*xlsOption) (err 
 
 			if fieldValue.CanInterface() {
 				cell.Value = fmt.Sprintf("%v", fieldValue.Interface())
-
-				if len(cell.Value) == 8 && cell.Value[:2] == "20" { // 特殊处理日期 20060102 的情况，
-					_, err = time.Parse("20060102", cell.Value)
-					if err == nil {
-						cell.SetType(xlsx.CellTypeNumeric)
-					}
-					_, err = time.Parse("2006/01/02", cell.Value)
-					if err == nil {
-						cell.SetType(xlsx.CellTypeDate)
-					}
-
-				} else {
-					cell.SetType(xlsx.CellTypeString)
-				}
+				cell.SetType(xlsx.CellTypeString)
 
 			}
 
@@ -241,44 +236,120 @@ func addRow(row *xlsx.Row, v interface{}, optionMap map[string]*xlsOption) (err 
 	return nil
 }
 
+func getStructOptions(dataValue reflect.Value) map[string]*xlsOption {
+	if dataValue.Kind() == reflect.Ptr {
+		dataValue = dataValue.Elem()
+	}
+
+	optionMap := make(map[string]*xlsOption)
+
+	dataType := dataValue.Type()
+	for i := 0; i < dataValue.NumField(); i++ {
+		fieldValue := dataValue.Field(i)
+		fieldType := dataType.Field(i)
+		tag := fieldType.Tag.Get(xlsTag)
+
+		optionMap[fieldType.Name] = getOptionFromTag(tag)
+		switch fieldValue.Kind() {
+		case reflect.Ptr:
+			if fieldValue.Elem().Kind() == reflect.Struct {
+				newOptionMap := getStructOptions(fieldValue.Elem())
+				for k, v := range newOptionMap {
+					optionMap[k] = v
+				}
+			}
+		case reflect.Struct:
+			newOptionMap := getStructOptions(fieldValue)
+			for k, v := range newOptionMap {
+				optionMap[k] = v
+			}
+		default:
+
+		}
+	}
+
+	return optionMap
+}
+
 func getOptionFromTag(tag string) *xlsOption {
-	// construct a yaml str
-	yamlStr := ""
 	tagStrs := strings.Split(tag, ",")
 
-	option := &xlsOption{}
+	option := &xlsOption{
+		XlsName: tagStrs[0],
+	}
 
 	if len(tagStrs) <= 1 {
-		return new(xlsOption)
+		return option
 	}
 
 	for _, v := range tagStrs[1:] {
 		tagStrSeg := v
-		if inlineTag == strings.TrimSpace(tagStrSeg) {
-			tagStrSeg += ":true"
+		if inlineKey == strings.TrimSpace(tagStrSeg) {
+			option.IsInline = true
+			continue
 		}
 		segs := strings.Split(strings.TrimSpace(tagStrSeg), ":")
-		yamlStr += strings.TrimSpace(segs[0]) + ": " + strings.TrimSpace(segs[1])
-	}
-	err := yaml.Unmarshal([]byte(yamlStr), option)
-	if err != nil {
-		panic(err)
-	}
+		if precisionKey == strings.TrimSpace(segs[0]) {
+			option.Precision, _ = strconv.Atoi(strings.TrimSpace(segs[1]))
 
+		}
+	}
 	return option
 }
 
-// just to construct a yaml document, and deserialize via yaml package
-// data: pointer of a slice
-func XlsBindByYamlTag(file *xlsx.File, sheetName string, data interface{}) error {
+var (
+	errInputType = errors.New("wants pointer of slice, slice contains struct element")
+)
+
+// validate data, return slice element of struct, sliceValue, isElementPtr, error
+func validateDataInput(data interface{}) (*reflect.Type, *reflect.Value, bool, error) {
+	dataType := reflect.TypeOf(data)
+	if dataType.Kind() != reflect.Ptr {
+		return nil, nil, false, errInputType
+	}
+
+	dataType = dataType.Elem()
+
+	if dataType.Kind() != reflect.Slice {
+		return nil, nil, false, errInputType
+	}
+
+	sliceValue := reflect.ValueOf(data).Elem()
+	dataType = dataType.Elem()
+	isElementPtr := false
+	if dataType.Kind() == reflect.Ptr {
+		isElementPtr = true
+		dataType = dataType.Elem()
+	}
+
+	if dataType.Kind() != reflect.Struct {
+		return nil, nil, false, errInputType
+	}
+
+	return &dataType, &sliceValue, isElementPtr, nil
+
+}
+
+// load one sheet to slice
+func XlsLoad(file *xlsx.File, sheetName string, data interface{}) error {
 	sheet, ok := file.Sheet[sheetName]
 	if !ok {
 		return errors.New("sheetName not found")
 	}
 
+	dataType, sliceValue, isElementPtr, err := validateDataInput(data)
+	if err != nil {
+		return err
+	}
+
+	dataValue := reflect.New(*dataType).Elem()
+	optionMap := getStructOptions(dataValue)
+
+	log.Debug("optionMap", utils.GetJsonIdent(optionMap))
+
+	// column index ->  column cell string
 	headerMap := make(map[int]string)
 
-	yamlStr := bytes.Buffer{}
 	for rowIndex, row := range sheet.Rows {
 		if rowIndex == 0 {
 			for columnIndex, cell := range row.Cells {
@@ -289,36 +360,111 @@ func XlsBindByYamlTag(file *xlsx.File, sheetName string, data interface{}) error
 			}
 			continue
 		}
-		// construct a yaml list format document
-		yamlStr.WriteString("- ")
 
 		// check if this row is empty
 		isRowEmpty := true
 		for _, cell := range row.Cells {
-			if len(cell.String()) > 0 {
+			if len(strings.TrimSpace(cell.String())) > 0 {
 				isRowEmpty = false
 				break
 			}
 		}
 
 		if isRowEmpty {
-			continue
+			break
 		}
 
+		valueMap := make(map[string]string)
 		for columnIndex, cell := range row.Cells {
 			if len(headerMap[columnIndex]) == 0 { // if head is empty, ignore
 				continue
 			}
+			valueMap[headerMap[columnIndex]] = cell.String()
+		}
 
-			if columnIndex > 0 {
-				yamlStr.WriteString("  ")
+		if isRowEmpty {
+			break
+		}
+
+		log.Debug("valueMap", valueMap)
+		addElement(*sliceValue, *dataType, isElementPtr, valueMap, optionMap)
+	}
+
+	return nil
+}
+
+func addElement(sliceValue reflect.Value, dataType reflect.Type, isPtr bool, valueMap map[string]string, optionMap map[string]*xlsOption) {
+	var elem reflect.Value
+	elem = reflect.New(dataType).Elem()
+
+	setStructValue(elem, valueMap, optionMap)
+
+	if isPtr {
+		sliceValue.Set(reflect.Append(sliceValue, elem.Addr()))
+	} else {
+		sliceValue.Set(reflect.Append(sliceValue, elem))
+	}
+
+}
+
+func setStructValue(dataValue reflect.Value, valueMap map[string]string, optionMap map[string]*xlsOption) {
+	if dataValue.Kind() == reflect.Ptr {
+		dataValue = dataValue.Elem()
+	}
+
+	if !dataValue.CanAddr() {
+		return
+	}
+	dataType := dataValue.Type()
+	for i := 0; i < dataValue.NumField(); i++ {
+		fieldValue := dataValue.Field(i)
+		fieldType := dataType.Field(i)
+
+		option, ok := optionMap[fieldType.Name]
+		if !ok {
+			continue
+		}
+
+		fieldStr := valueMap[option.XlsName]
+		if fieldStr == "" && !option.IsInline {
+			continue
+		}
+
+		log.Debug("get tag  value ", fieldStr)
+		switch fieldValue.Kind() {
+		case reflect.Ptr:
+			if fieldValue.Elem().Kind() == reflect.Struct {
+				setStructValue(fieldValue.Elem(), valueMap, optionMap)
 			}
-			yamlStr.WriteString(headerMap[columnIndex] + `: ` + cell.String() + "\n")
 
+		case reflect.Struct:
+			setStructValue(fieldValue, valueMap, optionMap)
+
+		case reflect.String:
+			fieldValue.SetString(fieldStr)
+
+		case reflect.Int,
+			reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			numValue, err := strconv.ParseInt(fieldStr, 10, 64)
+			if err != nil {
+				log.Error("ParseInt of tag:%v err:%v", fieldValue, err)
+				break
+			}
+			fieldValue.SetInt(numValue)
+
+		case reflect.Float32, reflect.Float64:
+			floatValue, err := strconv.ParseFloat(fieldStr, 64)
+			if err != nil {
+				log.Error("ParseInt of tag:%v err:%v", fieldValue, err)
+				break
+			}
+			if option.Precision > 0 {
+				floatValue = floats.Round(floatValue, option.Precision)
+			}
+			fieldValue.SetFloat(floatValue)
+
+		default:
 		}
 	}
-	// you can open debug log here
-	//fmt.Println(yamlStr.String())
-	err := yaml.Unmarshal(yamlStr.Bytes(), data)
-	return err
 }
