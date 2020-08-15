@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/miaomiao3/xlsx"
 	. "github.com/smartystreets/goconvey/convey"
-	"mtest/utils"
 	"testing"
 )
 
@@ -31,7 +30,7 @@ func TestXlsxBindByYamlTag(t *testing.T) {
 		So(err, ShouldEqual, nil)
 
 		err = XlsLoad(file, xlsxFileSheet, &persons)
-		fmt.Println("persons:", utils.GetJson(persons))
+		fmt.Println("persons:", persons)
 		So(err, ShouldEqual, nil)
 		So(len(persons), ShouldEqual, 5)
 		So(persons[4].Name, ShouldEqual, "n-4")

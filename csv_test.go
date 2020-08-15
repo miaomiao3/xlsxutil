@@ -47,7 +47,8 @@ func TestCsvDump(t *testing.T) {
 	Convey("CsvDump", t, func() {
 		persons := prepareTestData()
 		buf, err := CsvDump(",", persons)
-
+		fmt.Println(buf.String())
+		fmt.Println(err)
 		So(err, ShouldEqual, nil)
 		So(buf.String(), ShouldEqual, personCsvStr)
 	})
@@ -56,7 +57,7 @@ func TestCsvDump(t *testing.T) {
 func TestCsvBindByYamlTag(t *testing.T) {
 	Convey("TestCsvBindByYamlTag", t, func() {
 		persons := make([]*Person, 0)
-		err := CsvBindByYamlTag("./example/csv/people.csv", ",", &persons)
+		err := CsvLoad("./example/csv/people.csv", ",", &persons)
 
 		So(err, ShouldEqual, nil)
 		So(len(persons), ShouldEqual, 5)
