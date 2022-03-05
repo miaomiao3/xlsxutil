@@ -1,5 +1,5 @@
 ![CI status](https://github.com/miaomiao3/xlsxutil/actions/workflows/main.yml/badge.svg)
-[![stability-unstable](https://img.shields.io/badge/stability-unstable-yellow.svg)](https://github.com/emersion/stability-badges#unstable)
+[![stability-unstable](https://img.shields.io/badge/stability-unstable-yellow.svg)](https://github.com/emersion/stability-badges#stable)
 
 ## xlsxutil
 Super-fast to read and write csv or xlsx files.
@@ -33,7 +33,7 @@ Import
 `import ( "github.com/miaomiao3/xlsxutil" )`
 
 ***
-supposed a csv document content:
+Supposed a csv document content:
 
 ```$xslt
 name,money,age,school,address
@@ -92,6 +92,7 @@ $ go run main.go
 persons: [0xc000078140 0xc000078180 0xc0000781c0 0xc000078200 0xc000078240]
 buf
 name,money,age,school,address
+n-0,1.23,20,school-0,hali-0
 n-1,1.23,21,school-1,hali-1
 n-2,1.23,22,school-2,hali-2
 n-3,1.23,23,school-3,hali-3
