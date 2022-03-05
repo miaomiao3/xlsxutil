@@ -1,4 +1,4 @@
-![CI status](https://github.com/qizhanchan/xlsxutil/actions/workflows/main.yml/badge.svg)
+![CI status](https://github.com/miaomiao3/xlsxutil/actions/workflows/main.yml/badge.svg)
 [![stability-unstable](https://img.shields.io/badge/stability-unstable-yellow.svg)](https://github.com/emersion/stability-badges#unstable)
 
 ## xlsxutil
