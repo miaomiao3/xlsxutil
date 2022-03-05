@@ -33,7 +33,7 @@ func TestXlsxBind(t *testing.T) {
 		err = XlsLoad(file, xlsxFileSheet, &persons)
 		fmt.Println("persons:", persons)
 		So(err, ShouldEqual, nil)
-		So(len(persons), ShouldEqual, 5)
-		So(persons[4].Name, ShouldEqual, "n-4")
+		So(len(persons), ShouldEqual, 4)
+		So(persons[3].Name, ShouldEqual, "n-4")
 	})
 }

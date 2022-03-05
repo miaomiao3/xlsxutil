@@ -31,8 +31,8 @@ func CsvDump(sep string, data interface{}) (*bytes.Buffer, error) {
 		if itemValue.Kind() == reflect.Ptr {
 			itemValue = itemValue.Elem()
 		}
-		var rowStrSegs []string
 		if i == 0 {
+			var rowStrSegs []string
 			optionMap, err = addHeaderRow(itemValue, func(str string, kind reflect.Kind) {
 				rowStrSegs = append(rowStrSegs, str)
 			})
@@ -40,9 +40,8 @@ func CsvDump(sep string, data interface{}) (*bytes.Buffer, error) {
 				return nil, err
 			}
 			buf.WriteString(getLineFromRowSegs(rowStrSegs, sep) + "\n")
-			continue
 		}
-
+		var rowStrSegs []string
 		err = addRow(itemValue, optionMap, func(str string, kind reflect.Kind) {
 			rowStrSegs = append(rowStrSegs, str)
 		})
@@ -67,23 +66,12 @@ func CsvLoad(fileName string, sep string, data interface{}) error {
 	}
 	defer file.Close()
 
-	dataValue := reflect.ValueOf(data).Elem()
-
-	dataType, err := validateDataInput(data)
+	setter, err := NewSliceSetter(data)
 	if err != nil {
-		return err
-	}
-	var isElementPtr bool
-	elemSlice := reflect.MakeSlice(reflect.SliceOf(dataType), 0, 10)
-	if dataType.Kind() == reflect.Ptr {
-		isElementPtr = true
-		dataType = dataType.Elem()
+		return (err)
 	}
 
-	elementValueSample := reflect.New(dataType).Elem()
-	_, optionMap := getStructOptions(elementValueSample)
 	headerMap := make(map[int]string)
-
 	scanner := bufio.NewScanner(file)
 	lineCnt := 0
 	for scanner.Scan() {
@@ -113,15 +101,8 @@ func CsvLoad(fileName string, sep string, data interface{}) error {
 			}
 			valueMap[headerMap[k]] = v
 		}
-
-		elem := newElement(dataType, valueMap, optionMap)
-		if isElementPtr {
-			elemSlice = reflect.Append(elemSlice, (*elem).Addr())
-		} else {
-			elemSlice = reflect.Append(elemSlice, *elem)
-		}
-
+		setter.AddElement(valueMap)
 	}
-	dataValue.Set(elemSlice)
+	setter.Update()
 	return err
 }

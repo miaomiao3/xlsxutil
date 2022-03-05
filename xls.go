@@ -79,21 +79,10 @@ func XlsLoad(file *xlsx.File, sheetName string, data interface{}) error {
 		return errors.New("sheetName not found")
 	}
 
-	dataValue := reflect.ValueOf(data).Elem()
-
-	dataType, err := validateDataInput(data)
+	setter, err := NewSliceSetter(data)
 	if err != nil {
-		return err
+		return (err)
 	}
-	var isElementPtr bool
-	elemSlice := reflect.MakeSlice(reflect.SliceOf(dataType), 0, 10)
-	if dataType.Kind() == reflect.Ptr {
-		isElementPtr = true
-		dataType = dataType.Elem()
-	}
-
-	elementValueSample := reflect.New(dataType).Elem()
-	_, optionMap := getStructOptions(elementValueSample)
 
 	// column index ->  column cell string
 	headerMap := make(map[int]string)
@@ -130,13 +119,8 @@ func XlsLoad(file *xlsx.File, sheetName string, data interface{}) error {
 			valueMap[headerMap[columnIndex]] = cell.String()
 		}
 
-		elem := newElement(dataType, valueMap, optionMap)
-		if isElementPtr {
-			elemSlice = reflect.Append(elemSlice, (*elem).Addr())
-		} else {
-			elemSlice = reflect.Append(elemSlice, *elem)
-		}
+		setter.AddElement(valueMap)
 	}
-	dataValue.Set(elemSlice)
+	setter.Update()
 	return nil
 }

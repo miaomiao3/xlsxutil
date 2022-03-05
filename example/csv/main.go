@@ -34,13 +34,13 @@ func main() {
 	}
 	fmt.Println("persons:", GetJsonIndent(persons))
 
-	//buf, err := xlsxutil.CsvDump(",", persons)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//
-	//fmt.Println("buf")
-	//fmt.Println(buf)
+	buf, err := xlsxutil.CsvDump(",", persons)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("buf")
+	fmt.Println(buf)
 }
 func GetJsonIndent(v interface{}) string {
 	out, err := json.MarshalIndent(v, "", "  ")

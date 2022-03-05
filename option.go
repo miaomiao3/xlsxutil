@@ -64,17 +64,17 @@ func getStructOptions(dataValue reflect.Value) (fieldNames []string, optionMap m
 }
 
 func getOptionFromTag(tag string) *xlsOption {
-	tagStrs := strings.Split(tag, ",")
+	tagStrSegs := strings.Split(tag, ",")
 
 	option := &xlsOption{
-		XlsName: tagStrs[0],
+		XlsName: tagStrSegs[0],
 	}
 
-	if len(tagStrs) <= 1 {
+	if len(tagStrSegs) <= 1 {
 		return option
 	}
 
-	for _, v := range tagStrs[1:] {
+	for _, v := range tagStrSegs[1:] {
 		tagStrSeg := v
 		if inlineKey == strings.TrimSpace(tagStrSeg) {
 			option.IsInline = true
