@@ -3,10 +3,12 @@ package xlsxutil
 import (
 	"errors"
 	"fmt"
-	"gonum.org/v1/gonum/floats"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
+
+	errors2 "github.com/pkg/errors"
 )
 
 const (
@@ -62,17 +64,17 @@ func getStructOptions(dataValue reflect.Value) (fieldNames []string, optionMap m
 }
 
 func getOptionFromTag(tag string) *xlsOption {
-	tagStrs := strings.Split(tag, ",")
+	tagStrSegs := strings.Split(tag, ",")
 
 	option := &xlsOption{
-		XlsName: tagStrs[0],
+		XlsName: tagStrSegs[0],
 	}
 
-	if len(tagStrs) <= 1 {
+	if len(tagStrSegs) <= 1 {
 		return option
 	}
 
-	for _, v := range tagStrs[1:] {
+	for _, v := range tagStrSegs[1:] {
 		tagStrSeg := v
 		if inlineKey == strings.TrimSpace(tagStrSeg) {
 			option.IsInline = true
@@ -89,47 +91,38 @@ func getOptionFromTag(tag string) *xlsOption {
 
 type rowHandleFunc func(str string, kind reflect.Kind)
 
-// validate data, return slice element of struct, sliceValue, isElementPtr, error
-func validateDataInput(data interface{}) (*reflect.Type, *reflect.Value, bool, error) {
+// validate data, return slice element of struct, error
+func validateDataInput(data interface{}) (reflect.Type, error) {
 	dataType := reflect.TypeOf(data)
 	if dataType.Kind() != reflect.Ptr {
-		return nil, nil, false, errInputType
+		return nil, errInputType
 	}
 
 	dataType = dataType.Elem()
 
 	if dataType.Kind() != reflect.Slice {
-		return nil, nil, false, errInputType
+		return nil, errors2.WithStack(errInputType)
+	}
+	checkDataType := dataType.Elem() // type for check
+	elementType := dataType.Elem()
+
+	if checkDataType.Kind() == reflect.Ptr {
+		checkDataType = checkDataType.Elem()
 	}
 
-	sliceValue := reflect.ValueOf(data).Elem()
-	dataType = dataType.Elem()
-	isElementPtr := false
-	if dataType.Kind() == reflect.Ptr {
-		isElementPtr = true
-		dataType = dataType.Elem()
+	if checkDataType.Kind() != reflect.Struct {
+		return nil, errors2.WithStack(errInputType)
 	}
 
-	if dataType.Kind() != reflect.Struct {
-		return nil, nil, false, errInputType
-	}
-
-	return &dataType, &sliceValue, isElementPtr, nil
+	return elementType, nil
 
 }
 
-func addElement(sliceValue reflect.Value, dataType reflect.Type, isPtr bool, valueMap map[string]string, optionMap map[string]*xlsOption) {
+func newElement(dataType reflect.Type, valueMap map[string]string, optionMap map[string]*xlsOption) *reflect.Value {
 	var elem reflect.Value
 	elem = reflect.New(dataType).Elem()
-
 	setStructValue(elem, valueMap, optionMap)
-
-	if isPtr {
-		sliceValue.Set(reflect.Append(sliceValue, elem.Addr()))
-	} else {
-		sliceValue.Set(reflect.Append(sliceValue, elem))
-	}
-
+	return &elem
 }
 
 func setStructValue(dataValue reflect.Value, valueMap map[string]string, optionMap map[string]*xlsOption) {
@@ -182,7 +175,7 @@ func setStructValue(dataValue reflect.Value, valueMap map[string]string, optionM
 				break
 			}
 			if option.Precision > 0 {
-				floatValue = floats.Round(floatValue, option.Precision)
+				floatValue = toFixed(floatValue, option.Precision)
 			}
 			fieldValue.SetFloat(floatValue)
 
@@ -271,4 +264,14 @@ func addRow(dataValue reflect.Value, optionMap map[string]*xlsOption, f rowHandl
 		}
 	}
 	return nil
+}
+
+// https://stackoverflow.com/questions/18390266/how-can-we-truncate-float64-type-to-a-particular-precision
+func round(num float64) int {
+	return int(num + math.Copysign(0.5, num))
+}
+
+func toFixed(num float64, precision int) float64 {
+	output := math.Pow(10, float64(precision))
+	return float64(round(num*output)) / output
 }

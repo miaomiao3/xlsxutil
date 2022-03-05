@@ -2,8 +2,9 @@ package xlsxutil
 
 import (
 	"fmt"
-	. "github.com/smartystreets/goconvey/convey"
 	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 type Person struct {
@@ -54,7 +55,7 @@ func TestCsvDump(t *testing.T) {
 	})
 }
 
-func TestCsvBindByYamlTag(t *testing.T) {
+func TestCsvBind(t *testing.T) {
 	Convey("TestCsvBindByYamlTag", t, func() {
 		persons := make([]*Person, 0)
 		err := CsvLoad("./example/csv/people.csv", ",", &persons)

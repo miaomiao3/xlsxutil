@@ -2,9 +2,10 @@ package xlsxutil
 
 import (
 	"errors"
-	"github.com/miaomiao3/xlsx" // i fork this repo to enable SetType
 	"reflect"
 	"strings"
+
+	"github.com/miaomiao3/xlsx" // i fork this repo to enable SetType
 )
 
 var (
@@ -71,20 +72,17 @@ func XlsDump(file *xlsx.File, sheetName string, data interface{}) error {
 	return err
 }
 
-// load one sheet to slice
+// XlsLoad load one sheet to slice
 func XlsLoad(file *xlsx.File, sheetName string, data interface{}) error {
 	sheet, ok := file.Sheet[sheetName]
 	if !ok {
 		return errors.New("sheetName not found")
 	}
 
-	dataType, sliceValue, isElementPtr, err := validateDataInput(data)
+	setter, err := NewSliceSetter(data)
 	if err != nil {
-		return err
+		return (err)
 	}
-
-	dataValue := reflect.New(*dataType).Elem()
-	_, optionMap := getStructOptions(dataValue)
 
 	// column index ->  column cell string
 	headerMap := make(map[int]string)
@@ -121,8 +119,8 @@ func XlsLoad(file *xlsx.File, sheetName string, data interface{}) error {
 			valueMap[headerMap[columnIndex]] = cell.String()
 		}
 
-		addElement(*sliceValue, *dataType, isElementPtr, valueMap, optionMap)
+		setter.AddElement(valueMap)
 	}
-
+	setter.Update()
 	return nil
 }

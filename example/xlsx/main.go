@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/miaomiao3/xlsx"
 	"github.com/miaomiao3/xlsxutil"
 )
@@ -19,8 +20,8 @@ type Person struct {
 }
 
 type Edu struct {
-	School  string `xls:"school",yaml:"school"`
-	Address string `xls:"address",yaml:"address"`
+	School  string `xls:"school"`
+	Address string `xls:"address"`
 }
 
 func main() {
