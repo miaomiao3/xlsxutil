@@ -2,9 +2,10 @@ package xlsxutil
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/miaomiao3/xlsx"
 	. "github.com/smartystreets/goconvey/convey"
-	"testing"
 )
 
 const (
@@ -23,8 +24,8 @@ func TestXlsDump(t *testing.T) {
 	})
 }
 
-func TestXlsxBindByYamlTag(t *testing.T) {
-	Convey("TestXlsxBindByYamlTag", t, func() {
+func TestXlsxBind(t *testing.T) {
+	Convey("TestXlsxBind", t, func() {
 		persons := make([]*Person, 0)
 		file, err := xlsx.OpenFile(xlsxFilePath)
 		So(err, ShouldEqual, nil)

@@ -1,22 +1,23 @@
 ## xlsxutil
-
-Helpful func to read/write csv or xlsx files.
+Super-fast to read and write csv or xlsx files.
 
 # Feature
-* Easy api. Only `*Load` and `*Dump` function.
-* Inline support
+* Simple api. Only `*Load` and `*Dump` function.
+* Struct inline support
+* `precision` tag to set precision for xlsx
+* Support separator when dump csv
 
 # Limit
 * Only support string and numeric data type
 
 ***
 ## Usage
-Here a new tag 'xls' is used for this repo.  
+`xls` tag is used in this repo.  
 Pay attention to keys:
 * `inline` for extract struct
 * `precision` for `floats` data type precision control.
 
-Refer to example for mor cases.
+Refer to example for more cases.
  
 
 
@@ -61,8 +62,8 @@ type Person struct {
 }
 
 type Edu struct {
-	School  string `xls:"school",yaml:"school"`
-	Address string `xls:"address",yaml:"address"`
+	School  string `xls:"school"`
+	Address string `xls:"address"`
 }
 
 func main() {

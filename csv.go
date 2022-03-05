@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// dump data in csv format
+// CsvDump dump data in csv format
 // data: ptr of slice, slice element should be a struct
 // sep: separator of csv line. be careful to avoid value conflict
 func CsvDump(sep string, data interface{}) (*bytes.Buffer, error) {
@@ -58,6 +58,7 @@ func getLineFromRowSegs(row []string, sep string) string {
 	return strings.Join(row, sep)
 }
 
+// CsvLoad load csv data
 // data: pointer of a slice
 func CsvLoad(fileName string, sep string, data interface{}) error {
 	file, err := os.Open(fileName)
@@ -66,14 +67,21 @@ func CsvLoad(fileName string, sep string, data interface{}) error {
 	}
 	defer file.Close()
 
-	dataType, sliceValue, isElementPtr, err := validateDataInput(data)
+	dataValue := reflect.ValueOf(data).Elem()
+
+	dataType, err := validateDataInput(data)
 	if err != nil {
 		return err
 	}
+	var isElementPtr bool
+	elemSlice := reflect.MakeSlice(reflect.SliceOf(dataType), 0, 10)
+	if dataType.Kind() == reflect.Ptr {
+		isElementPtr = true
+		dataType = dataType.Elem()
+	}
 
-	dataValue := reflect.New(*dataType).Elem()
-	_, optionMap := getStructOptions(dataValue)
-
+	elementValueSample := reflect.New(dataType).Elem()
+	_, optionMap := getStructOptions(elementValueSample)
 	headerMap := make(map[int]string)
 
 	scanner := bufio.NewScanner(file)
@@ -98,17 +106,22 @@ func CsvLoad(fileName string, sep string, data interface{}) error {
 		}
 		valueMap := make(map[string]string)
 
-		rowStrs := strings.Split(rowStr, sep)
-		for k, v := range rowStrs {
+		rowStrSegs := strings.Split(rowStr, sep)
+		for k, v := range rowStrSegs {
 			if len(headerMap[k]) == 0 { // if head is empty, ignore
 				continue
 			}
-
 			valueMap[headerMap[k]] = v
 		}
 
-		addElement(*sliceValue, *dataType, isElementPtr, valueMap, optionMap)
-	}
+		elem := newElement(dataType, valueMap, optionMap)
+		if isElementPtr {
+			elemSlice = reflect.Append(elemSlice, (*elem).Addr())
+		} else {
+			elemSlice = reflect.Append(elemSlice, *elem)
+		}
 
+	}
+	dataValue.Set(elemSlice)
 	return err
 }

@@ -2,9 +2,10 @@ package xlsxutil
 
 import (
 	"errors"
-	"github.com/miaomiao3/xlsx" // i fork this repo to enable SetType
 	"reflect"
 	"strings"
+
+	"github.com/miaomiao3/xlsx" // i fork this repo to enable SetType
 )
 
 var (
@@ -71,20 +72,28 @@ func XlsDump(file *xlsx.File, sheetName string, data interface{}) error {
 	return err
 }
 
-// load one sheet to slice
+// XlsLoad load one sheet to slice
 func XlsLoad(file *xlsx.File, sheetName string, data interface{}) error {
 	sheet, ok := file.Sheet[sheetName]
 	if !ok {
 		return errors.New("sheetName not found")
 	}
 
-	dataType, sliceValue, isElementPtr, err := validateDataInput(data)
+	dataValue := reflect.ValueOf(data).Elem()
+
+	dataType, err := validateDataInput(data)
 	if err != nil {
 		return err
 	}
+	var isElementPtr bool
+	elemSlice := reflect.MakeSlice(reflect.SliceOf(dataType), 0, 10)
+	if dataType.Kind() == reflect.Ptr {
+		isElementPtr = true
+		dataType = dataType.Elem()
+	}
 
-	dataValue := reflect.New(*dataType).Elem()
-	_, optionMap := getStructOptions(dataValue)
+	elementValueSample := reflect.New(dataType).Elem()
+	_, optionMap := getStructOptions(elementValueSample)
 
 	// column index ->  column cell string
 	headerMap := make(map[int]string)
@@ -121,8 +130,13 @@ func XlsLoad(file *xlsx.File, sheetName string, data interface{}) error {
 			valueMap[headerMap[columnIndex]] = cell.String()
 		}
 
-		addElement(*sliceValue, *dataType, isElementPtr, valueMap, optionMap)
+		elem := newElement(dataType, valueMap, optionMap)
+		if isElementPtr {
+			elemSlice = reflect.Append(elemSlice, (*elem).Addr())
+		} else {
+			elemSlice = reflect.Append(elemSlice, *elem)
+		}
 	}
-
+	dataValue.Set(elemSlice)
 	return nil
 }
