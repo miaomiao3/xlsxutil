@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+
 	"github.com/miaomiao3/xlsxutil"
 )
 
@@ -17,8 +19,8 @@ type Person struct {
 }
 
 type Edu struct {
-	School  string `xls:"school",yaml:"school"`
-	Address string `xls:"address",yaml:"address"`
+	School  string `xls:"school"`
+	Address string `xls:"address"`
 }
 
 func main() {
@@ -27,9 +29,10 @@ func main() {
 
 	err := xlsxutil.CsvLoad(csvFilePath, ",", &persons)
 	if err != nil {
+		fmt.Printf("%+v", err)
 		panic(err)
 	}
-	fmt.Println("persons:", persons)
+	fmt.Println("persons:", GetJsonIndent(persons))
 
 	buf, err := xlsxutil.CsvDump(",", persons)
 	if err != nil {
@@ -38,4 +41,12 @@ func main() {
 
 	fmt.Println("buf")
 	fmt.Println(buf)
+}
+func GetJsonIndent(v interface{}) string {
+	out, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err.Error()
+	} else {
+		return string(out)
+	}
 }
